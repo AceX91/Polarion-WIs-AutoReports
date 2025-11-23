@@ -1,0 +1,308 @@
+## Velocity widget: Create Work Item and show recent WIs
+## Place this file in your Polarion report widgets directory and add it to a report.
+
+## Server-side creation handling
+## If this report is rendered by Polarion's Velocity engine you can handle
+## form submissions on the server side so work items are created using
+## Polarion's Java APIs (preferred for permission/context correctness).
+## The code below tries several common service names and prints helpful
+## messages if a particular service isn't available. It also uses the same
+## project lookup patterns shown in `referencepolarion.vm` (for example
+## `$page.reference.projectId` and `$trackerService`).
+#set($serverMessage = "")
+#set($createdWiInfo = "")
+#if($request.getMethod() == 'POST' && $request.getParameter('server_create') == '1')
+	#set($titleParam = $request.getParameter('title'))
+	#set($typeParam = $request.getParameter('type'))
+	## Try multiple ways to obtain project id (referencepolarion.vm style)
+	#set($projId = '')
+	#if($project)
+		#set($projId = $project.getId())
+	#elseif($page && $page.reference && $page.reference.projectId)
+		#set($projId = $page.reference.projectId)
+	#else
+		#set($projId = $request.getParameter('projectId'))
+	#end
+
+	#if($titleParam && $projId)
+		#set($created = $null)
+		#set($errors = [])
+
+		## 1) Try direct WorkItem service variables commonly exposed
+		#if($workItemService)
+			#if($workItemService.createWorkItem)
+				#set($created = $workItemService.createWorkItem($projId, $typeParam, $titleParam))
+			#else
+				#set($discard = $errors.add("workItemService.createWorkItem not available"))
+			#end
+		#end
+
+		#if(!$created && $workitemService)
+			#if($workitemService.createWorkItem)
+				#set($created = $workitemService.createWorkItem($projId, $typeParam, $titleParam))
+			#else
+				#set($discard = $errors.add("workitemService.createWorkItem not available"))
+			#end
+		#end
+
+		## 2) Try trackerService which appears in `referencepolarion.vm`
+		#if(!$created && $trackerService)
+			## Try a few plausible method names on trackerService
+			#if($trackerService.createWorkItem)
+				#set($created = $trackerService.createWorkItem($projId, $typeParam, $titleParam))
+			#elseif($trackerService.newWorkItem)
+				#set($created = $trackerService.newWorkItem($projId, $typeParam, $titleParam))
+			#else
+				## Some tracker services provide a tracker project object
+				#set($trkProj = $trackerService.getTrackerProject($projId))
+				#if($trkProj && $trkProj.createWorkItem)
+					#set($created = $trkProj.createWorkItem($typeParam, $titleParam))
+				#else
+					#set($discard = $errors.add("trackerService methods not available"))
+				#end
+			#end
+		#end
+
+		## 3) Skip componentLocator lookup (per request)
+		#if(!$created)
+			#set($discard = $errors.add("componentLocator lookup skipped"))
+		#end
+
+		## Finalize response
+		#if($created)
+			#set($serverMessage = 'Server-side: Work item created successfully')
+			#set($createdId = '')
+			#if($created && $created.getId)
+				#set($createdId = $created.getId())
+			#end
+			#set($ci = "")
+			#if($createdId)
+				#set($ci = $createdId)
+			#end
+			#set($ctitle = $titleParam)
+			#if($created && $created.getTitle)
+				#set($ctitle = $created.getTitle())
+			#end
+			#set($createdWiInfo = "$ci - $ctitle")
+		#else
+			#set($serverMessage = "Server-side creation failed. Tried options: $errors.join('; ')")
+		#end
+	#else
+		#set($serverMessage = 'Server-side: Missing title or project context')
+	#end
+#end
+
+<div class="polarion-widget-create-wi">
+	<h3>Create Work Item</h3>
+	## If server-side creation happened, show its message first
+	#if($serverMessage)
+		<div style="background:#eef;padding:8px;margin-bottom:8px">$serverMessage<br/>
+			#if($createdWiInfo) <strong>Created:</strong> $createdWiInfo#end
+		</div>
+	#end
+
+	## Server-side diagnostics (always visible) — helps debug why create didn't run
+	<div style="background:#f7f7f7;border:1px solid #ddd;padding:8px;margin-bottom:8px;font-size:12px;color:#222">
+		<strong>Server diagnostics</strong>
+		<ul>
+			<li>Request method: $request.getMethod()</li>
+			<li>Submitted title param: "$request.getParameter('title')"</li>
+			<li>Submitted type param: "$request.getParameter('type')"</li>
+			<li>Submitted server_create param: "$request.getParameter('server_create')"</li>
+			<li>Project via $project: #if($project)$project.getId()#else <em>none</em>#end</li>
+			<li>Project via page.reference: #if($page && $page.reference && $page.reference.projectId)$page.reference.projectId#else <em>none</em>#end</li>
+			<li>projectId request param: #if($request.getParameter('projectId'))$request.getParameter('projectId')#else <em>none</em>#end</li>
+			<li>$workItemService present: #if($workItemService)yes#else no#end</li>
+			<li>$workItemService.createWorkItem available: #if($workItemService && $workItemService.createWorkItem)yes#else no#end</li>
+			<li>$workitemService present: #if($workitemService)yes#else no#end</li>
+			<li>$trackerService present: #if($trackerService)yes#else no#end</li>
+			<li>$trackerService.createWorkItem available: #if($trackerService && $trackerService.createWorkItem)yes#else no#end</li>
+			<li>$componentLocator present: #if($componentLocator)yes#else no#end</li>
+		</ul>
+		<p style="margin-top:4px;color:#666">If server-side creation didn't run, check the above — in particular the "server_create" param and which services/methods are available in your Velocity context.</p>
+	</div>
+
+	<form id="createWiForm" method="post">
+        <input type="hidden" id="server_create_input" name="server_create" value="0" />
+		<div>
+			<label for="wiTitle">Title:</label>
+			<input type="text" id="wiTitle" name="title" required style="width:60%" />
+		</div>
+		<div style="margin-top:8px">
+			<label for="wiType">Type:</label>
+			<select id="wiType" name="type">
+				## Try to render project-specific work item types when available
+				#if ($project && $project.getWorkItemTypes())
+					#foreach($t in $project.getWorkItemTypes())
+						<option value="$t.id">$t.id - $t.presentationName</option>
+					#end
+				#else
+					<option value="task">Task</option>
+					<option value="defect">Defect</option>
+					<option value="requirement">Requirement</option>
+				#end
+			</select>
+		</div>
+		<div style="margin-top:10px">
+			<button type="submit">Create (client-side)</button>
+			<button type="submit" onclick="document.getElementById('server_create_input').value='1'">Create (server-side)</button>
+		</div>
+	</form>
+
+	<div id="createResult" style="margin-top:8px"></div>
+
+	<h4 style="margin-top:16px">Recent Work Items (project)</h4>
+	<table id="recentWis" border="1" cellpadding="4" style="border-collapse:collapse">
+		<thead>
+			<tr><th>ID</th><th>Title</th><th>Type</th></tr>
+		</thead>
+		<tbody></tbody>
+	</table>
+</div>
+
+## Client-side behaviour: uses REST to create and list work items.
+<script>
+#set($safeProjectId = "")
+#if($project)
+	#set($safeProjectId = $project.getId())
+#elseif($page && $page.reference && $page.reference.projectId)
+	#set($safeProjectId = $page.reference.projectId)
+#else
+	#set($safeProjectId = $request.getParameter('projectId'))
+#end
+#set($safeContextPath = "")
+#if($request && $request.getContextPath())
+	#set($safeContextPath = $request.getContextPath())
+#end
+(function(){
+		// Project id resolved on server-side into a JS-safe variable
+		var projectId = "$!safeProjectId";
+		// context path (usually '/polarion' or '') resolved server-side
+		var contextPath = "$!safeContextPath";
+		// If contextPath was not available server-side, derive a sensible default
+		if(!contextPath || contextPath === 'null' || contextPath === 'undefined'){
+			// Try to detect a '/polarion' base in the current URL path
+			var m = window.location.pathname.match(/(^.*?\/polarion)/);
+			if(m && m[1]){
+				contextPath = m[1];
+			} else {
+				// Fallback to empty (REST will be relative to origin)
+				contextPath = '';
+			}
+		}
+		// Build restBase robustly: prefer contextPath + '/rest', otherwise origin + '/polarion/rest', otherwise '/rest'
+		var restBase = '';
+		if(contextPath && contextPath.length){
+			restBase = contextPath + '/rest';
+		} else if(window.location.origin){
+			restBase = window.location.origin + '/polarion/rest';
+		} else {
+			restBase = '/rest';
+		}
+
+	// REST endpoints: adjust if your Polarion instance has different paths
+	// Common endpoints used by Polarion installations (may vary by version):
+	// - Create work item (try): POST ${contextPath}/rest/workitems
+	// - Search/list work items (try): GET ${contextPath}/rest/search/workitems?query=project.id:PROJECT
+
+	var createEndpoint = restBase + "/workitems"; // may require adjustment
+	var listEndpoint = restBase + "/search/workitems?query=project.id:" + encodeURIComponent(projectId) + "&limit=20";
+
+	// Debug: render resolved endpoints for troubleshooting
+	(function(){
+		var dbg = document.createElement('div');
+		dbg.style.marginTop = '8px';
+		dbg.style.fontSize = '12px';
+		dbg.style.color = '#444';
+		dbg.innerHTML = '<strong>Debug:</strong> createEndpoint=' + createEndpoint + '<br/>listEndpoint=' + listEndpoint + '<br/>projectId=' + projectId;
+		document.querySelector('.polarion-widget-create-wi').insertBefore(dbg, document.getElementById('createResult'));
+	})();
+
+	function showMessage(msg){
+		var el = document.getElementById('createResult');
+		el.textContent = msg;
+	}
+
+	// Add a created WI to the table (best-effort, depending on returned fields)
+	function addRowToTable(wi){
+		var tbody = document.querySelector('#recentWis tbody');
+		var id = wi.id || wi.workItemId || wi.uri || wi._id || '';
+		var title = wi.title || wi.summary || document.getElementById('wiTitle').value;
+		var type = wi.type || wi.workItemType || document.getElementById('wiType').value;
+		var tr = document.createElement('tr');
+		tr.innerHTML = '<td>' + id + '</td><td>' + (title||'') + '</td><td>' + (type||'') + '</td>';
+		tbody.insertBefore(tr, tbody.firstChild);
+	}
+
+	// Load recent WIs via REST and populate table (best-effort; adjust fields to your API)
+	function loadRecent(){
+		fetch(listEndpoint, { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+			.then(function(r){ if(!r.ok) throw r; return r.json(); })
+			.then(function(data){
+				var items = data.workItems || data.results || data.items || data;
+				var tbody = document.querySelector('#recentWis tbody');
+				tbody.innerHTML = '';
+				if(!items) return;
+				// If items is an object with nested arrays, try common fields
+				if(Array.isArray(items)){
+					items.forEach(function(it){
+						var id = it.id || it.workItemId || it.uri || it._id || '';
+						var title = it.title || it.summary || '';
+						var type = it.type || it.workItemType || '';
+						var tr = document.createElement('tr');
+						tr.innerHTML = '<td>'+id+'</td><td>'+title+'</td><td>'+type+'</td>';
+						tbody.appendChild(tr);
+					});
+				}
+			}).catch(function(err){
+				// ignore errors silently; user may need to adjust listEndpoint
+				console.warn('Could not load recent work items', err);
+			});
+	}
+
+	document.getElementById('createWiForm').addEventListener('submit', function(e){
+		// If user clicked server-side create, allow the form to submit normally
+		if(e.submitter && e.submitter.name === 'server_create'){
+			// let the browser POST the form to the server (handled above in Velocity)
+			return true;
+		}
+		e.preventDefault();
+		var title = document.getElementById('wiTitle').value.trim();
+		var type = document.getElementById('wiType').value;
+		if(!title){ showMessage('Please enter a title'); return; }
+
+		// Payload shape is best-effort — adapt to your Polarion version's REST API.
+		var payload = { projectId: projectId, title: title, type: type };
+
+		fetch(createEndpoint, {
+			method: 'POST',
+			credentials: 'same-origin',
+			headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+			body: JSON.stringify(payload)
+		}).then(function(r){
+			return r.text().then(function(text){
+				if(!r.ok){
+					// Show HTTP status and server response (HTML/text) to help diagnose 404s
+					showMessage('Error ' + r.status + ': ' + text);
+					throw new Error('HTTP ' + r.status);
+				}
+				// Try to parse JSON, but if response is HTML show it
+				try{
+					var data = JSON.parse(text);
+					showMessage('Work item created successfully');
+					addRowToTable(data);
+				}catch(e){
+					showMessage('Work item created (non-JSON response): ' + text);
+				}
+			});
+		}).catch(function(err){
+			showMessage('Error creating work item (see console for details)');
+			console.error('Create WI error:', err);
+		});
+	});
+
+	// Initial load
+	loadRecent();
+})();
+</script>
+

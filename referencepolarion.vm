@@ -1,0 +1,25 @@
+#set ($docType = "oroductRequinements")
+projectid
+##Global variable declaration
+#set($projectID - $page.reference.projectId)
+#set($trkrProject = $trackerService.getTrackerProject($projectID))
+#set($project - $trackerService.getProjectsservice() • getProject(SprojectID))
+#set($prjRevision =$project.getRevision())
+#set($lastRevisionNumber = "")
+## global variables for Link Roles
+#set ($linkrole_Refines = "refines")
+#set ($linkrole_Realizes - "realizes")
+#set ($linkrole_Validates - "validates")
+#set($linkrole_Verifies - "verifies")
+##Work Item Maps
+#set (SuserNeedRowSpanMap - SobjectFactory-newMap())
+#set($systemRequirementsfromUserNeedMap - SobjectFactory. newMap())
+#set($validationsfromUserNeedMap - SobjectFactory-newMap())
+#set($sysRegRowSpanMap - SobjectFactory-newMap())
+#set($designRequirementsfromSRMap - SobjectFactory-newMap())
+#set($designReqRowSpanMap - SobjectFactory-newMap())
+#set ($designOutputsfromDRMap - SobjectFactory-newMap())
+#set($verificationsfromSRMap - SobjectFactory.newMap())
+#set$blMap - SobjectFactory-newMap())
+#set($int = 0)
+#set($baseRevision -""
